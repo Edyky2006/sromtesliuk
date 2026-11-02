@@ -4,6 +4,9 @@
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <algorithm>
+#include <chrono>
+#include <x86intrin.h>
 
 using namespace std;
 
@@ -118,6 +121,24 @@ public:
         return result;
     }
 
+    BigInt<N> shiftRight(size_t shift) const {
+        BigInt<N> result;
+        if (shift == 0) return *this;
+
+        size_t blockShift = shift / 32;
+        size_t bitShift = shift % 32;
+
+        for (size_t i = 0; i < N; ++i) {
+            if (i >= blockShift) {
+                result.blocks[i - blockShift] |= (this->blocks[i] >> bitShift);
+            }
+            if (bitShift > 0 && i >= blockShift + 1) {
+                result.blocks[i - blockShift - 1] |= (this->blocks[i] << (32 - bitShift));
+            }
+        }
+        return result;
+    }
+
     void setBit(size_t index) {
         if (index < N * 32) {
             this->blocks[index / 32] |= (1U << (index % 32));
@@ -182,6 +203,27 @@ public:
     }
 
 
+    bool getBit(size_t index) const {
+        if (index >= N * 32) return false;
+        return (this->blocks[index / 32] >> (index % 32)) & 1;
+    }
+
+    BigInt<N> power(const BigInt<N>& B) const {
+        BigInt<N> C(1);
+        BigInt<N> A = *this;
+        size_t m = B.bitLength();
+
+        for (size_t i = 0; i < m; ++i) {
+            if (B.getBit(i)) {
+                C = C * A;
+            }
+            A = A * A;
+        }
+
+        return C;
+    }
+
+
 
     string toHex() const {
         stringstream ss;
@@ -207,9 +249,81 @@ public:
 
         return ss.str();
     }
+
+    BigInt(const string& str, int base = 16) {
+        blocks.fill(0);
+
+        if (base == 16) {
+            size_t blockIdx = 0, bitShift = 0;
+            for (int i = str.length() - 1; i >= 0; --i) {
+                char c = str[i];
+                uint32_t val = 0;
+                if (c >= '0' && c <= '9') val = c - '0';
+                else if (c >= 'a' && c <= 'f') val = c - 'a' + 10;
+                else if (c >= 'A' && c <= 'F') val = c - 'A' + 10;
+                else continue;
+
+                if (blockIdx < N) {
+                    blocks[blockIdx] |= (val << bitShift);
+                    bitShift += 4;
+                    if (bitShift >= 32) { bitShift = 0; blockIdx++; }
+                }
+            }
+        }
+        else if (base == 10) {
+            for (char c : str) {
+                if (c >= '0' && c <= '9') {
+                    *this = (*this) * BigInt<N>(10) + BigInt<N>(c - '0');
+                }
+            }
+        }
+        else if (base == 2) {
+            size_t blockIdx = 0, bitShift = 0;
+            for (int i = str.length() - 1; i >= 0; --i) {
+                char c = str[i];
+                if (c == '1' && blockIdx < N) {
+                    blocks[blockIdx] |= (1U << bitShift);
+                }
+                if (c == '0' || c == '1') {
+                    bitShift++;
+                    if (bitShift >= 32) { bitShift = 0; blockIdx++; }
+                }
+            }
+        }
+    }
+
+    string toDec() const {
+        if (*this == BigInt<N>(0)) return "0";
+
+        BigInt<N> temp = *this;
+        BigInt<N> ten(10);
+        string res = "";
+
+        while (!(temp == BigInt<N>(0))) {
+            BigInt<N> Q, R;
+            divMod(temp, ten, Q, R);
+            res += to_string(R.blocks[0]);
+            temp = Q;
+        }
+
+        reverse(res.begin(), res.end());
+        return res;
+    }
+
+    string toBin() const {
+        if (*this == BigInt<N>(0)) return "0";
+        string res = "";
+        size_t len = bitLength();
+
+        for (int i = len - 1; i >= 0; --i) {
+            res += getBit(i) ? '1' : '0';
+        }
+        return res;
+    }
 };
 
-int main() {
+
+int main(){
 
     return 0;
-}
+};
