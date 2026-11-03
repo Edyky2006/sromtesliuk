@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <chrono>
 #include <x86intrin.h>
+#include <vector>
+#include <random>
 
 using namespace std;
 
@@ -85,8 +87,47 @@ public:
     }
 
     BigInt<N> square() const {
-        return (*this) * (*this);
+        BigInt<N> result;
+
+        for (size_t i = 0; i < N; ++i) {
+            if (this->blocks[i] == 0) continue;
+
+            uint64_t carry = 0;
+            for (size_t j = i + 1; i + j < N; ++j) {
+                uint64_t prod = static_cast<uint64_t>(this->blocks[i]) * this->blocks[j];
+                uint64_t sum = static_cast<uint64_t>(result.blocks[i + j]) + prod + carry;
+
+                result.blocks[i + j] = static_cast<uint32_t>(sum);
+                carry = sum >> 32;
+            }
+        }
+
+        uint32_t bit_carry = 0;
+        for (size_t i = 0; i < N; ++i) {
+            uint32_t next_carry = result.blocks[i] >> 31;
+            result.blocks[i] = (result.blocks[i] << 1) | bit_carry;
+            bit_carry = next_carry;
+        }
+
+        uint64_t carry = 0;
+        for (size_t i = 0; i < N; ++i) {
+            uint64_t sum = static_cast<uint64_t>(result.blocks[i]) + carry;
+
+            if (i % 2 == 0) {
+                size_t idx = i / 2;
+                uint64_t sq = static_cast<uint64_t>(this->blocks[idx]) * this->blocks[idx];
+
+                sum += static_cast<uint32_t>(sq);
+                carry = (sum >> 32) + (sq >> 32);
+            } else {
+                carry = sum >> 32;
+            }
+            result.blocks[i] = static_cast<uint32_t>(sum);
+        }
+
+        return result;
     }
+
 
     size_t bitLength() const {
         for (int i = N - 1; i >= 0; --i) {
@@ -102,6 +143,7 @@ public:
         }
         return 0;
     }
+
 
     BigInt<N> shiftLeft(size_t shift) const {
         BigInt<N> result;
@@ -320,10 +362,207 @@ public:
         }
         return res;
     }
+
+    static BigInt<N> generateRandom() {
+        BigInt<N> result;
+        static random_device rd;
+        static mt19937 gen(rd());
+        static uniform_int_distribution<uint32_t> dist(0, 0xFFFFFFFF);
+
+        for (size_t i = 0; i < N; ++i) {
+            result.blocks[i] = dist(gen);
+        }
+        if (result.blocks[N - 1] == 0) {
+            result.blocks[N - 1] = 1;
+        }
+        return result;
+    }
 };
 
+template <size_t N>
+void testDistributiveProperty(const BigInt<N>& a, const BigInt<N>& b, const BigInt<N>& c) {
+    cout << "Test 1: (a + b) * c == c * (a + b) == a * c + b * c\n";
 
-int main(){
+    BigInt<N> left1 = (a + b) * c;
+    BigInt<N> mid1 = c * (a + b);
+    BigInt<N> right1 = (a * c) + (b * c);
+
+    if ((left1 == mid1) && (left1 == right1)) {
+        cout << "[SUCCESS]\n";
+        cout << "Result: " << left1.toDec() << "\n\n";
+    } else {
+        cout << "[FAILED]\n\n";
+    }
+}
+
+template <size_t N>
+void testRepeatedAddition(const BigInt<N>& a, int n_times) {
+    cout << "Test 2: n * a == a + a + ... + a (" << n_times << " times)\n";
+
+    BigInt<N> n(to_string(n_times), 10);
+    BigInt<N> mult_result = a * n;
+
+    BigInt<N> sum_result("0", 10);
+    for (int i = 0; i < n_times; ++i) {
+        sum_result = sum_result + a;
+    }
+
+    if (mult_result == sum_result) {
+        cout << "[SUCCESS]\n";
+        cout << "Result: " << mult_result.toDec() << "\n\n";
+    } else {
+        cout << "[FAILED]\n\n";
+    }
+}
+
+template <size_t N>
+void testDivisionIdentity(const BigInt<N>& divisor, const BigInt<N>& dividend) {
+    cout << "Test 3: A = B * Q + R\n";
+
+    BigInt<N> Q, R;
+    BigInt<N>::divMod(dividend, divisor, Q, R);
+
+    BigInt<N> rebuilt = (divisor * Q) + R;
+
+    if (rebuilt == dividend) {
+        cout << "[SUCCESS]\n";
+        cout << "Original: " << dividend.toDec() << "\n";
+        cout << "Rebuilt : " << rebuilt.toDec() << "\n\n";
+    } else {
+        cout << "[FAILED]\n\n";
+    }
+}
+
+template <size_t N>
+void testExponentiation(const BigInt<N>& a) {
+    cout << "Test 4: a^3 == a * a * a\n";
+
+    BigInt<N> exp("3", 10);
+    BigInt<N> power_result = a.power(exp);
+
+    BigInt<N> direct_result = a * a * a;
+
+    if (power_result == direct_result) {
+        cout << "[SUCCESS]\n";
+        cout << "Result: " << power_result.toDec() << "\n\n";
+    } else {
+        cout << "[FAILED]\n\n";
+    }
+}
+
+template <size_t N>
+void runTime() {
+    const int ITERATIONS = 1000000;
+
+    cout << "--- BENCHMARKS (Average over " << ITERATIONS << " runs) ---\n";
+    cout << left << setw(20) << "Operation"
+         << setw(25) << "Time (nanoseconds)"
+         << setw(25) << "CPU Cycles (ticks)" << "\n";
+    cout << string(65, '-') << "\n";
+
+    vector<BigInt<N>> data_A(ITERATIONS);
+    vector<BigInt<N>> data_B(ITERATIONS);
+    for (int i = 0; i < ITERATIONS; ++i) {
+        data_A[i] = BigInt<N>::generateRandom();
+        data_B[i] = BigInt<N>::generateRandom();
+
+        if (data_A[i] < data_B[i]) {
+            swap(data_A[i], data_B[i]);
+        }
+    }
+    BigInt<N> exp("5", 10);
+
+    auto benchmark = [&](const string& name, auto op) {
+        auto start_time = chrono::high_resolution_clock::now();
+        uint64_t start_cycles = __rdtsc();
+
+        BigInt<N> dummy;
+        for (int i = 0; i < ITERATIONS; ++i) {
+            dummy = op(i);
+        }
+
+        uint64_t end_cycles = __rdtsc();
+        auto end_time = chrono::high_resolution_clock::now();
+
+        auto duration_ns = chrono::duration_cast<chrono::nanoseconds>(end_time - start_time).count();
+
+        cout << left << setw(20) << name
+             << setw(20) << (duration_ns / ITERATIONS)
+             << setw(20) << ((end_cycles - start_cycles) / ITERATIONS)
+             << "\n";
+    };
+
+    benchmark("Addition (+)", [&](int i) { return data_A[i] + data_B[i]; });
+    benchmark("Subtraction (-)", [&](int i) { return data_A[i] - data_B[i]; });
+    benchmark("Multiplication (*)", [&](int i) { return data_A[i] * data_B[i]; });
+
+    BigInt<N> Q, R;
+    benchmark("Division (/)", [&](int i) {
+        BigInt<N>::divMod(data_A[i], data_B[i], Q, R);
+        return Q;
+    });
+
+    benchmark("Power (^5)", [&](int i) { return data_A[i].power(exp); });
+
+    benchmark("Square (^2)", [&](int i) { return data_A[i].square(); });
+
+    cout << string(65, '-') << "\n\n";
+}
+
+template <size_t N>
+void printNumberRepresentations(const string& name, const BigInt<N>& num) {
+    cout << "--- Representation of Number " << name << " ---\n";
+    cout << "Symbolic (Hex) : " << num.toHex() << "\n";
+    cout << "Symbolic (Dec) : " << num.toDec() << "\n";
+    cout << "Bitwise  (Bin) : " << num.toBin() << "\n\n";
+}
+
+
+int main() {
+    BigInt<32> A("987654321098765432109876", 10);
+    BigInt<32> B("123456789012345678901234", 10);
+
+    if (A < B) {
+        swap(A, B);
+    }
+
+    BigInt<32> C("555555555", 10);
+
+    cout << "=== Representations of Numbers (1024 and 512 bits) ===\n\n";
+    printNumberRepresentations("A (1024-bit)", A);
+    printNumberRepresentations("B (1024-bit)", B);
+    printNumberRepresentations("C (512-bit)", C);
+
+    cout << "=== Results of Basic Operations ===\n\n";
+
+    BigInt<32> sum = A + B;
+    printNumberRepresentations("A + B", sum);
+
+    BigInt<32> diff = A - B;
+    printNumberRepresentations("A - B", diff);
+
+    BigInt<32> prod = A * B;
+    printNumberRepresentations("A * B", prod);
+
+    BigInt<32> div_res = A / C;
+    printNumberRepresentations("A / C", div_res);
+
+    BigInt<32> mod_res = A % C;
+    printNumberRepresentations("A mod C", mod_res);
+
+
+    cout << "=== Tests ===\n\n";
+
+    BigInt<5> a("123", 10);
+    BigInt<5> b("9876", 10);
+    BigInt<5> c_small("55555555555555555555", 10);
+
+    testDistributiveProperty(a, b, c_small);
+    testRepeatedAddition(a, 100);
+    testDivisionIdentity(b, a);
+    testExponentiation(a);
+
+    runTime<32>();
 
     return 0;
-};
+}
