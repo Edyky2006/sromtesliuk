@@ -449,6 +449,105 @@ public:
         return (a / gcdBinary(a, b)) * b;
     }
 
+    BigInt<N> addMod(const BigInt<N>& other, const BigInt<N>& mod) const {
+        BigInt<N> result = *this + other;
+
+        if (result >= mod) {
+            result = result - mod;
+        }
+
+        return result;
+    }
+
+    BigInt<N> subMod(const BigInt<N>& other, const BigInt<N>& mod) const {
+        if (*this >= other) {
+            return *this - other;
+        } else {
+            return mod - (other - *this);
+        }
+    }
+
+    static BigInt<N> computeBarrettMu(const BigInt<N>& mod) {
+        size_t k = 0;
+
+        for (int i = N - 1; i >= 0; --i) {
+            if (mod.blocks[i] != 0) {
+                k = i + 1;
+                break;
+            }
+        }
+
+        if (k == 0) throw invalid_argument("Modulus cannot be zero");
+
+        BigInt<N> dividend(0);
+
+        if (2 * k < N) {
+            dividend.setBit(2 * k * 32);
+        } else {
+            throw overflow_error("Modulus is too large for Barrett reduction with fixed N");
+        }
+
+        BigInt<N> Q, R;
+        divMod(dividend, mod, Q, R);
+        return Q;
+    }
+
+    BigInt<N> barrettReduce(const BigInt<N>& mod, const BigInt<N>& mu) const {
+        size_t k = 0;
+        for (int i = N - 1; i >= 0; --i) {
+            if (mod.blocks[i] != 0) {
+                k = i + 1;
+                break;
+            }
+        }
+
+        if (k == 0) throw invalid_argument("Modulus cannot be zero");
+
+        if (*this < mod) {
+            return *this;
+        }
+
+        BigInt<N> q1 = (k > 1) ? this->shiftRight((k - 1) * 32) : *this;
+        BigInt<N> q2 = q1 * mu;
+        BigInt<N> q3 = q2.shiftRight((k + 1) * 32);
+
+        BigInt<N> q3_mod = q3 * mod;
+
+        while (q3_mod > *this) {
+            q3_mod = q3_mod - mod;
+        }
+
+        BigInt<N> r = *this - q3_mod;
+
+        while (r >= mod) {
+            r = r - mod;
+        }
+
+        return r;
+    }
+
+    BigInt<N> mulMod(const BigInt<N>& other, const BigInt<N>& mod, const BigInt<N>& mu) const {
+        BigInt<N> prod = *this * other;
+
+        return prod.barrettReduce(mod, mu);
+    }
+
+    BigInt<N> squareMod(const BigInt<N>& mod, const BigInt<N>& mu) const {
+        BigInt<N> sq = this->square();
+
+        return sq.barrettReduce(mod, mu);
+    }
+
+    BigInt<N> mulModmu(const BigInt<N>& other, const BigInt<N>& mod) const {
+        BigInt<N> mu = computeBarrettMu(mod);
+        return this->mulMod(other, mod, mu);
+    }
+
+    BigInt<N> squareModmu(const BigInt<N>& mod) const {
+        BigInt<N> mu = computeBarrettMu(mod);
+        return this->squareMod(mod, mu);
+    }
+
 template <size_t N>
 void testDistributiveProperty(const BigInt<N>& a, const BigInt<N>& b, const BigInt<N>& c) {
     cout << "Test 1: (a + b) * c == c * (a + b) == a * c + b * c\n";
