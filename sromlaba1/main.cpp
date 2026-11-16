@@ -187,9 +187,23 @@ public:
         }
     }
 
+    void clearBit(size_t index) {
+        if (index < N * 32) {
+            this->blocks[index / 32] &= ~(1U << (index % 32));
+        }
+    }
+
 
     bool operator>=(const BigInt<N>& other) const {
         return !(*this < other);
+    }
+
+    bool operator>(const BigInt<N>& other) const {
+        return other < *this;
+    }
+
+    bool operator!=(const BigInt<N>& other) const {
+        return !(*this == other);
     }
 
     bool operator<(const BigInt<N>& other) const {
@@ -377,7 +391,63 @@ public:
         }
         return result;
     }
-};
+
+    // ==========================================
+    static BigInt<N> gcdClassic(BigInt<N> a, BigInt<N> b) {
+        BigInt<N> zero(0);
+
+        while (!(b == zero)) {
+            BigInt<N> Q, R;
+
+            divMod(a, b, Q, R);
+
+            a = b;
+            b = R;
+        }
+
+        return a;
+    }
+
+    static BigInt<N> gcdBinary(BigInt<N> a, BigInt<N> b) {
+        BigInt<N> zero(0);
+
+        if (a == zero) return b;
+        if (b == zero) return a;
+
+        size_t shiftCount = 0;
+
+        while ((a.blocks[0] & 1) == 0 && (b.blocks[0] & 1) == 0) {
+            a = a.shiftRight(1);
+            b = b.shiftRight(1);
+            shiftCount++;
+        }
+
+        while ((a.blocks[0] & 1) == 0) {
+            a = a.shiftRight(1);
+        }
+
+        while (!(b == zero)) {
+            while ((b.blocks[0] & 1) == 0) {
+                b = b.shiftRight(1);
+            }
+
+            if (a > b) {
+                std::swap(a, b);
+            }
+            b = b - a;
+        }
+
+        return a.shiftLeft(shiftCount);
+    }
+
+
+
+    static BigInt<N> lcm(const BigInt<N>& a, const BigInt<N>& b) {
+        BigInt<N> zero(0);
+        if (a == zero || b == zero) return zero;
+
+        return (a / gcdBinary(a, b)) * b;
+    }
 
 template <size_t N>
 void testDistributiveProperty(const BigInt<N>& a, const BigInt<N>& b, const BigInt<N>& c) {
@@ -452,7 +522,7 @@ void testExponentiation(const BigInt<N>& a) {
 
 template <size_t N>
 void runTime() {
-    const int ITERATIONS = 1000000;
+    const int ITERATIONS = 10000;
 
     cout << "--- BENCHMARKS (Average over " << ITERATIONS << " runs) ---\n";
     cout << left << setw(20) << "Operation"
@@ -465,12 +535,10 @@ void runTime() {
     for (int i = 0; i < ITERATIONS; ++i) {
         data_A[i] = BigInt<N>::generateRandom();
         data_B[i] = BigInt<N>::generateRandom();
-
-        if (data_A[i] < data_B[i]) {
-            swap(data_A[i], data_B[i]);
-        }
+        data_A[i].setBit(N * 32 - 1);
+        data_B[i].clearBit(N * 32 - 1);
     }
-    BigInt<N> exp("5", 10);
+
 
     auto benchmark = [&](const string& name, auto op) {
         auto start_time = chrono::high_resolution_clock::now();
@@ -503,10 +571,8 @@ void runTime() {
     });
 
     benchmark("Power (^5)", [&](int i) { return data_A[i].power(exp); });
-
     benchmark("Square (^2)", [&](int i) { return data_A[i].square(); });
-
-    cout << string(65, '-') << "\n\n";
+    cout << string(75, '-') << "\n\n";
 }
 
 template <size_t N>
@@ -516,17 +582,15 @@ void printNumberRepresentations(const string& name, const BigInt<N>& num) {
     cout << "Symbolic (Dec) : " << num.toDec() << "\n";
     cout << "Bitwise  (Bin) : " << num.toBin() << "\n\n";
 }
-
-
 int main() {
-    BigInt<32> A("987654321098765432109876", 10);
-    BigInt<32> B("123456789012345678901234", 10);
+    BigInt<64> A("62236b948f02c9084994e69151edc5d18a21680b9a444ec0a9e64314f4733f33d711ce5fd088eea819d8c5d6532390b7879ab74e15c0448deca39a51ad20ed8351c34ab4ea6bba1272ed58551e7fcd88e8b6343fa1a086b7b3552a2d6818e34089c87746ebde9c2e1f4a2d1f7481cdea3797a9c43c5252449ab829673d50a2a3", 16);
+    BigInt<64> B("2648e846249c3ae70e72012c123ac9373e8271044a7610d6ad53f969accd40445fca77b5a9dd45bc9dc2f633724ac98c982a873a97deb605602d411d81ecb39b7d7957bf18751843910ca52a01225d63a5e5490986f157fb0cf5b440e06d4bdbde0ead243036afe6e53d65b8b77c9d59c988f61d6d0ce98b2f30d30963937650", 16);
 
     if (A < B) {
         swap(A, B);
     }
 
-    BigInt<32> C("555555555", 10);
+    BigInt<64> C("xcc33eec44f567e65e33c921f9a5ff46f031fce0532ea921122ccfa44baf1be781d04128c7bd1f28cf4509ed1379b9d07d66654a42115f3e950cb99d6f049a734", 16);
 
     cout << "=== Representations of Numbers (1024 and 512 bits) ===\n\n";
     printNumberRepresentations("A (1024-bit)", A);
@@ -535,19 +599,19 @@ int main() {
 
     cout << "=== Results of Basic Operations ===\n\n";
 
-    BigInt<32> sum = A + B;
+    BigInt<64> sum = A + B;
     printNumberRepresentations("A + B", sum);
 
-    BigInt<32> diff = A - B;
+    BigInt<64> diff = A - B;
     printNumberRepresentations("A - B", diff);
 
-    BigInt<32> prod = A * B;
+    BigInt<64> prod = A * B;
     printNumberRepresentations("A * B", prod);
 
-    BigInt<32> div_res = A / C;
+    BigInt<64> div_res = A / C;
     printNumberRepresentations("A / C", div_res);
 
-    BigInt<32> mod_res = A % C;
+    BigInt<64> mod_res = A % C;
     printNumberRepresentations("A mod C", mod_res);
 
 
@@ -563,6 +627,7 @@ int main() {
     testExponentiation(a);
 
     runTime<32>();
+
 
     return 0;
 }
