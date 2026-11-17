@@ -548,6 +548,45 @@ public:
         return this->squareMod(mod, mu);
     }
 
+    BigInt<N> powerMod(const BigInt<N>& exp, const BigInt<N>& mod) const {
+        BigInt<N> zero(0);
+        if (mod == zero) throw invalid_argument("Modulus cannot be zero");
+        if (exp == zero) return BigInt<N>(1);
+
+        BigInt<N> mu = computeBarrettMu(mod);
+
+        BigInt<N> C(1);
+
+        BigInt<N> A = this->barrettReduce(mod, mu);
+
+        int maxBlock = N - 1;
+        while (maxBlock >= 0 && exp.blocks[maxBlock] == 0) {
+            maxBlock--;
+        }
+
+        for (int i = 0; i <= maxBlock; ++i) {
+            uint32_t currentBlock = exp.blocks[i];
+
+            int bitsToProcess = 32;
+            if (i == maxBlock) {
+                while (bitsToProcess > 0 && (currentBlock & (1U << (bitsToProcess - 1))) == 0) {
+                    bitsToProcess--;
+                }
+            }
+
+            for (int j = 0; j < bitsToProcess; ++j) {
+                if (currentBlock & (1U << j)) {
+                    C = C.mulMod(A, mod, mu);
+                }
+
+                A = A.squareMod(mod, mu);
+            }
+        }
+
+        return C;
+    }
+};
+
 template <size_t N>
 void testDistributiveProperty(const BigInt<N>& a, const BigInt<N>& b, const BigInt<N>& c) {
     cout << "Test 1: (a + b) * c == c * (a + b) == a * c + b * c\n";
