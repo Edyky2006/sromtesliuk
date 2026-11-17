@@ -392,7 +392,8 @@ public:
         return result;
     }
 
-    // ==========================================
+    // ===============-----------===========================
+
     static BigInt<N> gcdClassic(BigInt<N> a, BigInt<N> b) {
         BigInt<N> zero(0);
 
@@ -449,6 +450,7 @@ public:
         return (a / gcdBinary(a, b)) * b;
     }
 
+
     BigInt<N> addMod(const BigInt<N>& other, const BigInt<N>& mod) const {
         BigInt<N> result = *this + other;
 
@@ -466,6 +468,7 @@ public:
             return mod - (other - *this);
         }
     }
+
 
     static BigInt<N> computeBarrettMu(const BigInt<N>& mod) {
         size_t k = 0;
@@ -513,10 +516,6 @@ public:
 
         BigInt<N> q3_mod = q3 * mod;
 
-        while (q3_mod > *this) {
-            q3_mod = q3_mod - mod;
-        }
-
         BigInt<N> r = *this - q3_mod;
 
         while (r >= mod) {
@@ -538,15 +537,6 @@ public:
         return sq.barrettReduce(mod, mu);
     }
 
-    BigInt<N> mulModmu(const BigInt<N>& other, const BigInt<N>& mod) const {
-        BigInt<N> mu = computeBarrettMu(mod);
-        return this->mulMod(other, mod, mu);
-    }
-
-    BigInt<N> squareModmu(const BigInt<N>& mod) const {
-        BigInt<N> mu = computeBarrettMu(mod);
-        return this->squareMod(mod, mu);
-    }
 
     BigInt<N> powerMod(const BigInt<N>& exp, const BigInt<N>& mod) const {
         BigInt<N> zero(0);
@@ -556,11 +546,10 @@ public:
         BigInt<N> mu = computeBarrettMu(mod);
 
         BigInt<N> C(1);
-
-        BigInt<N> A = this->barrettReduce(mod, mu);
+        BigInt<N> A = *this;
 
         int maxBlock = N - 1;
-        while (maxBlock >= 0 && exp.blocks[maxBlock] == 0) {
+        while (exp.blocks[maxBlock] == 0) {
             maxBlock--;
         }
 
@@ -658,6 +647,171 @@ void testExponentiation(const BigInt<N>& a) {
     }
 }
 
+// ===================================
+
+template <size_t N>
+void testModularDistributive(const BigInt<N>& a, const BigInt<N>& b, const BigInt<N>& c, const BigInt<N>& mod) {
+    cout << "Test 1: (a + b)*c == c*(a + b) == a*c + b*c (mod n)\n";
+
+    BigInt<N> mu = BigInt<N>::computeBarrettMu(mod);
+
+    BigInt<N> a_plus_b = a.addMod(b, mod);
+
+    BigInt<N> left = a_plus_b.mulMod(c, mod, mu);
+
+    BigInt<N> mid = c.mulMod(a_plus_b, mod, mu);
+
+    BigInt<N> ac = a.mulMod(c, mod, mu);
+    BigInt<N> bc = b.mulMod(c, mod, mu);
+    BigInt<N> right = ac.addMod(bc, mod);
+
+    if ((left == mid) && (left == right)) {
+        cout << "[SUCCESS] Result: " << left.toDec() << "\n\n";
+    } else {
+        cout << "[FAILED]\n\n";
+    }
+}
+
+template <size_t N>
+void testModularRepeatedAddition(const BigInt<N>& a, int n_times, const BigInt<N>& mod) {
+    cout << "Test 2: n * a == a + a + ... + a (mod m) (" << n_times << " times)\n";
+    BigInt<N> mu = BigInt<N>::computeBarrettMu(mod);
+
+    BigInt<N> n_big(to_string(n_times), 10);
+    BigInt<N> mult_result = a.mulMod(n_big, mod, mu);
+
+    BigInt<N> sum_result("0", 10);
+    for (int i = 0; i < n_times; ++i) {
+        sum_result = sum_result.addMod(a, mod);
+    }
+
+    if (mult_result == sum_result) {
+        cout << "[SUCCESS] Result: " << mult_result.toDec() << "\n\n";
+    } else {
+        cout << "[FAILED]\n\n";
+    }
+}
+
+template <size_t N>
+void testEulerTheorem() {
+    cout << "Test 3: a^phi(n) == 1 (mod n)\n";
+
+    BigInt<N> p("2147483647", 10);
+    BigInt<N> phi_p = p - BigInt<N>(1);
+    BigInt<N> a1("123456789", 10);
+
+    BigInt<N> res1 = a1.powerMod(phi_p, p);
+    cout << " (Prime M31, a^p-1 mod p) : ";
+    if (res1 == BigInt<N>(1)) cout << "[SUCCESS]\n Result: " << res1.toDec() << "\n";
+    else cout << "[FAILED] " << res1.toDec() << "\n";
+
+    BigInt<N> three("3", 10);
+    BigInt<N> two("2", 10);
+    BigInt<N> k_40("40", 10);
+    BigInt<N> k_39("39", 10);
+
+    BigInt<N> n_3k = three.power(k_40);
+    BigInt<N> phi_3k = two * three.power(k_39);
+
+    BigInt<N> a2("10000000000000000000", 10);
+
+    BigInt<N> res2 = a2.powerMod(phi_3k, n_3k);
+    cout << " (n = 3^40, a^phi(n) mod n): ";
+    if (res2 == BigInt<N>(1)) cout << "[SUCCESS]\n\n Result: " << res2.toDec() << "\n\n";
+    else cout << "[FAILED] " << res2.toDec() << "\n\n";
+}
+
+template <size_t N>
+void runModularTests() {
+    cout << "=== B) ===\n\n";
+    BigInt<N> a("98765432109876543210", 10);
+    BigInt<N> b("12345678901234567890", 10);
+    BigInt<N> c("55555555555555555555", 10);
+    BigInt<N> mod("99999999999999999989", 10);
+
+    cout << "a: " << a.toDec() << endl;
+    cout << "b: " << b.toDec() << endl;
+    cout << "c: " << c.toDec() << endl;
+    cout << "mod: " << mod.toDec() << endl;
+
+    testModularDistributive(a, b, c, mod);
+    testModularRepeatedAddition(a, 150, mod);
+    testEulerTheorem<N>();
+}
+
+template <size_t N>
+void runCustomTests() {
+    cout << "=== CUSTOM TESTS ===\n\n";
+
+    cout << "Test 1: a * b == GCD(a,b) * LCM(a,b)\n";
+    BigInt<N> a("12345678901234567890", 10);
+    BigInt<N> b("98765432109876543210", 10);
+
+    cout << "a: " << a.toDec() << endl;
+    cout << "b: " << b.toDec() << endl;
+
+    BigInt<N> ab = a * b;
+    BigInt<N> gcd_ab = BigInt<N>::gcdBinary(a, b);
+    BigInt<N> lcm_ab = BigInt<N>::lcm(a, b);
+    BigInt<N> gcd_lcm = gcd_ab * lcm_ab;
+
+    cout << "ab: " << ab.toDec() << endl;
+    cout << "Result: " << gcd_lcm.toDec() << endl;
+
+    if (ab == gcd_lcm) {
+        cout << "[SUCCESS]\n\n";
+    } else {
+        cout << "[FAILED]\n\n";
+    }
+
+    cout << "Test 2: X^(A+B) mod M == (X^A * X^B) mod M\n";
+    BigInt<N> x("42", 10);
+    BigInt<N> expA("1000", 10);
+    BigInt<N> expB("1500", 10);
+    BigInt<N> mod("99991", 10);
+
+    cout << "X: " << x.toDec() << endl;
+    cout << "A: " << expA.toDec() << endl;
+    cout << "B: " << expB.toDec() << endl;
+    cout << "mod: " << mod.toDec() << endl;
+
+    BigInt<N> expSum = expA + expB;
+    BigInt<N> left = x.powerMod(expSum, mod);
+
+    BigInt<N> mu = BigInt<N>::computeBarrettMu(mod);
+    BigInt<N> xa = x.powerMod(expA, mod);
+    BigInt<N> xb = x.powerMod(expB, mod);
+    BigInt<N> right = xa.mulMod(xb, mod, mu);
+
+    cout << "X^(A+B) mod M: " << left.toDec() << endl;
+    cout << "(X^A * X^B) mod M\n: " << right.toDec() << endl;
+
+    if (left == right) {
+        cout << "[SUCCESS]\n\n";
+    } else {
+        cout << "[FAILED]\n\n";
+    }
+
+    cout << "Test 3: A^p == A (mod p)\n";
+    BigInt<N> p("2147483647", 10);
+    BigInt<N> A("999999999999999999", 10);
+
+    cout << "p: " << p.toDec() << endl;
+    cout << "A: " << A.toDec() << endl;
+
+    BigInt<N> res = A.powerMod(p, p);
+    BigInt<N> expected = A % p;
+
+    cout << "expected: " << expected.toDec() << endl;
+    cout << "result: " << res.toDec() << endl;
+
+    if (res == expected) {
+        cout << "[SUCCESS]\n\n";
+    } else {
+        cout << "[FAILED]\n\n";
+    }
+}
+
 template <size_t N>
 void runTime() {
     const int ITERATIONS = 10000;
@@ -677,6 +831,18 @@ void runTime() {
         data_B[i].clearBit(N * 32 - 1);
     }
 
+    BigInt<N> exp("5", 10);
+    BigInt<N> mod = BigInt<N>::generateRandom();
+    mod = mod.shiftRight((N / 2 + 1) * 32);
+    if (mod == BigInt<N>(0)) mod = BigInt<N>(1);
+    BigInt<N> mu = BigInt<N>::computeBarrettMu(mod);
+
+    vector<BigInt<N>> mod_A(ITERATIONS);
+    vector<BigInt<N>> mod_B(ITERATIONS);
+    for (int i = 0; i < ITERATIONS; ++i) {
+        mod_A[i] = data_A[i] % mod;
+        mod_B[i] = data_B[i] % mod;
+    }
 
     auto benchmark = [&](const string& name, auto op) {
         auto start_time = chrono::high_resolution_clock::now();
@@ -698,18 +864,16 @@ void runTime() {
              << "\n";
     };
 
-    benchmark("Addition (+)", [&](int i) { return data_A[i] + data_B[i]; });
-    benchmark("Subtraction (-)", [&](int i) { return data_A[i] - data_B[i]; });
-    benchmark("Multiplication (*)", [&](int i) { return data_A[i] * data_B[i]; });
+    benchmark("Add Mod", [&](int i) { return mod_A[i].addMod(mod_B[i], mod); });
+    benchmark("Sub Mod", [&](int i) { return mod_A[i].subMod(mod_B[i], mod); });
+    benchmark("Mul Mod (Barrett)", [&](int i) { return mod_A[i].mulMod(mod_B[i], mod, mu); });
+    benchmark("Square Mod (Barrett)", [&](int i) { return mod_A[i].squareMod(mod, mu); });
+    benchmark("Power Mod (^5)", [&](int i) { return mod_A[i].powerMod(exp, mod); });
 
-    BigInt<N> Q, R;
-    benchmark("Division (/)", [&](int i) {
-        BigInt<N>::divMod(data_A[i], data_B[i], Q, R);
-        return Q;
-    });
+    benchmark("GCD (Classic Euclid)", [&](int i) { return BigInt<N>::gcdClassic(mod_A[i], mod_B[i]); });
+    benchmark("GCD (Binary Stein)", [&](int i) { return BigInt<N>::gcdBinary(mod_A[i], mod_B[i]); });
+    benchmark("LCM", [&](int i) { return BigInt<N>::lcm(mod_A[i], mod_B[i]); });
 
-    benchmark("Power (^5)", [&](int i) { return data_A[i].power(exp); });
-    benchmark("Square (^2)", [&](int i) { return data_A[i].square(); });
     cout << string(75, '-') << "\n\n";
 }
 
@@ -720,51 +884,48 @@ void printNumberRepresentations(const string& name, const BigInt<N>& num) {
     cout << "Symbolic (Dec) : " << num.toDec() << "\n";
     cout << "Bitwise  (Bin) : " << num.toBin() << "\n\n";
 }
+
+
+template <size_t N>
+void runModularCalculatorTest() {
+    cout << "=== A) ===\n\n";
+
+    BigInt<N> mod("3141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117067982148086513282306647093844609550582231725359408128481117450284102701938521105559644622948954930381964428810975665933446128475648233786783165271201909145648566923460348610454326648213393607260249141273", 10);
+    BigInt<N> A("271828182845904523536028747135266249775724709369995957496696762772407663035354759457138217852516642742746639193200305992181741359662904357290033429526059563073813232862794349076323382988075319525101901157383418793070215408914993488416750924476146066808226480016847741185374234544243710753907774499206955170276183860626133138458300075204493382656029760673711320070932870912744374704723069697720931014169283681902551510865746377", 10);
+    BigInt<N> B("115792089237316195423570985008687907853269984665640564039457584007913129639747", 10);
+    BigInt<N> exp("115792089237316195423570985008687907853269984665640564039457584007913129639747", 10);
+
+    cout << "Given N: " << mod.toDec() << endl;
+    cout << "Given number: " << A.toDec() << endl;
+    cout << "Given number: " << B.toDec() << endl;
+    cout << "gcd(A, B)= " << BigInt<N>::gcdBinary(A, B).toDec() << "\n";
+    cout << "lcm(A, B)= " << BigInt<N>::lcm(A, B).toDec() << "\n\n";
+
+
+    A=A%mod;
+    B=B%mod;
+
+    BigInt<N> mu = BigInt<N>::computeBarrettMu(mod);
+
+    cout << "N  : " << mod.toDec() << "\n";
+    cout << "Number A     : " << A.toDec() << "\n";
+    cout << "Number B     : " << B.toDec() << "\n";
+    cout << "Exponent (E) : " << exp.toDec() << "\n\n";
+
+    cout << "(A + B) mod M = " << A.addMod(B, mod).toDec() << "\n";
+    cout << "(A - B) mod M = " << A.subMod(B, mod).toDec() << "\n";
+    cout << "(A * B) mod M = " << A.mulMod(B, mod, mu).toDec() << "\n";
+    cout << "(A ^ 2) mod M = " << A.squareMod(mod, mu).toDec() << "\n";
+    cout << "(A ^ E) mod M = " << A.powerMod(exp, mod).toDec() << "\n\n";
+}
+
 int main() {
-    BigInt<64> A("62236b948f02c9084994e69151edc5d18a21680b9a444ec0a9e64314f4733f33d711ce5fd088eea819d8c5d6532390b7879ab74e15c0448deca39a51ad20ed8351c34ab4ea6bba1272ed58551e7fcd88e8b6343fa1a086b7b3552a2d6818e34089c87746ebde9c2e1f4a2d1f7481cdea3797a9c43c5252449ab829673d50a2a3", 16);
-    BigInt<64> B("2648e846249c3ae70e72012c123ac9373e8271044a7610d6ad53f969accd40445fca77b5a9dd45bc9dc2f633724ac98c982a873a97deb605602d411d81ecb39b7d7957bf18751843910ca52a01225d63a5e5490986f157fb0cf5b440e06d4bdbde0ead243036afe6e53d65b8b77c9d59c988f61d6d0ce98b2f30d30963937650", 16);
+    runModularCalculatorTest<128>();
 
-    if (A < B) {
-        swap(A, B);
-    }
+    runModularTests<64>();
+    runCustomTests<64>();
 
-    BigInt<64> C("xcc33eec44f567e65e33c921f9a5ff46f031fce0532ea921122ccfa44baf1be781d04128c7bd1f28cf4509ed1379b9d07d66654a42115f3e950cb99d6f049a734", 16);
-
-    cout << "=== Representations of Numbers (1024 and 512 bits) ===\n\n";
-    printNumberRepresentations("A (1024-bit)", A);
-    printNumberRepresentations("B (1024-bit)", B);
-    printNumberRepresentations("C (512-bit)", C);
-
-    cout << "=== Results of Basic Operations ===\n\n";
-
-    BigInt<64> sum = A + B;
-    printNumberRepresentations("A + B", sum);
-
-    BigInt<64> diff = A - B;
-    printNumberRepresentations("A - B", diff);
-
-    BigInt<64> prod = A * B;
-    printNumberRepresentations("A * B", prod);
-
-    BigInt<64> div_res = A / C;
-    printNumberRepresentations("A / C", div_res);
-
-    BigInt<64> mod_res = A % C;
-    printNumberRepresentations("A mod C", mod_res);
-
-
-    cout << "=== Tests ===\n\n";
-
-    BigInt<5> a("123", 10);
-    BigInt<5> b("9876", 10);
-    BigInt<5> c_small("55555555555555555555", 10);
-
-    testDistributiveProperty(a, b, c_small);
-    testRepeatedAddition(a, 100);
-    testDivisionIdentity(b, a);
-    testExponentiation(a);
-
-    runTime<32>();
+    runTime<64>();
 
 
     return 0;
